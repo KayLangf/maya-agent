@@ -2,7 +2,7 @@
 
 A voice-first benefits triage agent built as a demonstration for [CivicReach](https://civicreach.ai/), whose platform helps social service agencies answer every call, complete screenings, and route residents to the right programs.
 
-**[Live Demo →]()**  
+**[Live Demo →](https://maya-agent-three.vercel.app/)**  
 Built by [Kay Langfitt](https://linkedin.com/in/) as part of an application for the Founding Product Engineer role.
 
 ---
