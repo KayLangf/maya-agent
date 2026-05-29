@@ -1,7 +1,7 @@
 "use client";
 
 import { useConversation } from "@11labs/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const AGENT_ID = "agent_5901ksrfb6dffkytwrjqr135rp2f";
 
@@ -10,6 +10,9 @@ type ConvStatus = "idle" | "connecting" | "connected" | "disconnected";
 export default function Home() {
   const [started, setStarted] = useState(false);
   const [bars, setBars] = useState<number[]>(Array(24).fill(3));
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const conversation = useConversation({
     onConnect: () => console.log("Connected to Maya"),
@@ -28,7 +31,23 @@ export default function Home() {
       if (isSpeaking) {
         setBars(Array(24).fill(0).map(() => Math.random() * 38 + 6));
       } else if (isListening) {
-        setBars(Array(24).fill(0).map(() => Math.random() * 20 + 4));
+        const analyser = analyserRef.current;
+        if (analyser) {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          const binCount = dataArray.length;
+          setBars(Array(24).fill(0).map((_, i) => {
+            const start = Math.floor((i / 24) * binCount);
+            const end = Math.max(start + 1, Math.floor(((i + 1) / 24) * binCount));
+            let sum = 0;
+            for (let j = start; j < end; j++) sum += dataArray[j];
+            const avg = sum / (end - start);
+            const normalized = Math.min(1, (avg / 255) * 2.5);
+            return 4 + normalized * 40;
+          }));
+        } else {
+          setBars(Array(24).fill(0).map(() => Math.random() * 20 + 4));
+        }
       } else if (status === "connecting") {
         setBars(Array(24).fill(0).map((_, i) => {
           const t = Date.now() / 300;
@@ -45,7 +64,15 @@ export default function Home() {
 
   const startCall = useCallback(async () => {
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      audioCtxRef.current = audioCtx;
+      analyserRef.current = analyser;
       setStarted(true);
       await conversation.startSession({ agentId: AGENT_ID });
     } catch (err) {
@@ -55,6 +82,11 @@ export default function Home() {
 
   const endCall = useCallback(async () => {
     await conversation.endSession();
+    audioCtxRef.current?.close();
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
     setStarted(false);
   }, [conversation]);
 
