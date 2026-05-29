@@ -1,33 +1,47 @@
 # Maya — Voice Benefits Intake Agent
 
-A voice-first benefits triage agent for social service agencies. Maya conducts warm, conversational intake to help residents find housing, food (SNAP), and childcare programs they may qualify for.
+A voice-first benefits triage agent built as a demonstration for [CivicReach](https://civicreach.ai/), whose platform helps social service agencies answer every call, complete screenings, and route residents to the right programs.
 
-**[Live Demo →]()**
+**[Live Demo →]()**  
+Built by [Kay Langfitt](https://linkedin.com/in/) as part of an application for the Founding Product Engineer role.
 
 ---
 
 ## What it does
 
-Residents call or visit and speak naturally with Maya. Maya asks one question at a time, listens carefully, detects urgent needs, and after a short conversation summarizes which programs the resident likely qualifies for and what their next step should be.
+Maya conducts a spoken intake conversation to help residents identify housing, food (SNAP), and childcare programs they may qualify for. It asks one question at a time, detects crisis signals, and closes with a clear summary of next steps.
 
-Designed for the reality of social services: users are often stressed, may have limited literacy or tech comfort, and need a system that is patient, clear, and reliable.
+The agent is intentionally narrow in scope — a deliberate product decision, not a technical limitation. A benefits intake agent that tries to do everything is an agent that does nothing reliably.
+
+## Architecture
+
+```
+Browser mic → ElevenLabs STT → LLM (system prompt) → ElevenLabs TTS → Speaker
+```
+
+ElevenLabs Conversational AI handles the full real-time pipeline over WebSocket. The Next.js app is a thin wrapper: it manages UI state, renders the visualizer, and hands off to the ElevenLabs `useConversation` hook for all audio logic.
+
+This architecture was chosen deliberately over a DIY pipeline (Whisper + GPT-4 + TTS) because:
+- Latency is lower — no round-trip HTTP calls between STT, LLM, and TTS
+- Voice quality is materially better, which matters when users are stressed
+- It mirrors how a production system at CivicReach's scale would actually be built
 
 ## Design decisions
 
-**Voice-first, not text-with-voice bolted on.** Responses are constrained to 1–3 spoken sentences with no markdown or lists. A system that says "asterisk asterisk housing asterisk asterisk" in a real call is a broken system.
+**Voice-first constraints on the system prompt.** Responses are limited to 1–3 spoken sentences with no markdown. A voice agent that outputs bullet points or bold text is a broken product, not a minor formatting issue. The prompt explicitly prohibits lists, headers, and structured output.
 
-**One question at a time.** Overwhelming someone already in crisis with a multi-part intake form — even a spoken one — increases dropout. Conversational pacing builds trust.
+**One question at a time.** Users calling for benefits help are frequently in crisis, may have limited English proficiency, and are not in an optimal cognitive state for multi-part questions. Sequential pacing reduces dropout and builds rapport.
 
-**Crisis detection is first-class.** The agent is explicitly instructed to detect acute crisis signals (no food today, eviction tonight, child unsafe) and immediately shift to emergency routing. This isn't a nice-to-have; it's a core safety requirement.
+**Crisis detection is a first-class requirement, not a feature.** The agent is explicitly instructed to detect acute signals — no food today, eviction tonight, child in an unsafe situation — and immediately reprioritize toward emergency resources. This is a safety requirement that belongs in the system prompt, not an afterthought in the UI.
 
-**Human handoff is always available.** Any production deployment of this agent should include a clear escalation path to a live staff member. The agent is not a replacement for human judgment in complex or crisis situations.
+**Human handoff is architectural, not cosmetic.** Any production deployment needs a defined escalation path to a live staff member. The agent handles triage; humans handle judgment calls. This distinction matters especially in high-stakes, high-trust contexts like benefits and child welfare.
 
-**Short conversation history.** After a natural conclusion (usually 4–6 exchanges), Maya summarizes and closes. This keeps costs predictable and avoids context drift.
+**Conversation length is bounded.** After 4–6 exchanges, Maya summarizes and closes. This keeps costs predictable, reduces context drift, and respects the user's time.
 
 ## Stack
 
 - **Next.js 14** — framework
-- **ElevenLabs Conversational AI** — voice agent (STT + LLM + TTS pipeline)
+- **ElevenLabs Conversational AI** — real-time voice pipeline (STT + LLM + TTS)
 - **Vercel** — deployment
 
 ## Local development
@@ -37,21 +51,30 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Requires microphone access. Works best in Chrome.
+Requires microphone access. Works best in Chrome.
 
-## Deploy to Vercel
+## Deploy
 
 ```bash
 npm i -g vercel
 vercel
 ```
 
-Or connect the GitHub repo to Vercel for automatic deploys on push.
+Or connect this repo to Vercel for automatic deploys on push. No environment variables required — the Agent ID is public.
 
-## Extending this
+## What comes next: evaluation harness
 
-The natural next step is an **evaluation harness** — a test suite that runs the agent through scripted scenarios (first-time caller, crisis caller, non-English speaker, caller who gives incomplete answers) and scores its responses against expected behavior. This is how you maintain quality as the agent's prompt or underlying model changes.
+The obvious gap in this prototype is that there's no systematic way to verify the agent behaves correctly. The next build is an evaluation harness: a test suite that runs the agent through scripted personas and scores responses against expected behavior.
+
+Scenarios worth testing:
+- First-time caller with no prior benefits experience
+- Caller in acute crisis (eviction tonight)
+- Caller who gives incomplete or contradictory answers
+- Non-English-speaking caller
+- Caller who asks questions outside the agent's scope
+
+This is how you maintain quality as the system prompt evolves, the underlying model changes, or new edge cases emerge in production. It's also how you make the case to agency partners that the system is reliable.
 
 ---
 
-*Built as a demonstration of voice AI product thinking for social service contexts. Not a real agency. Not legal or benefits advice.*
+*Prototype only. Not a real agency. Not legal or benefits advice.*
